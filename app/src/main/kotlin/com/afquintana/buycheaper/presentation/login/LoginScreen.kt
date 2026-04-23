@@ -10,8 +10,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -24,8 +28,11 @@ fun LoginScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
+    var showRegisterForm by remember { mutableStateOf(false) }
 
-    if (isLoggedIn) onLoggedIn()
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) onLoggedIn()
+    }
 
     Column(
         modifier = Modifier
@@ -35,11 +42,22 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         OutlinedTextField(
-            value = state.email,
-            onValueChange = viewModel::onEmailChanged,
-            label = { Text("Correo") },
+            value = state.nick,
+            onValueChange = viewModel::onNickChanged,
+            label = { Text("Nick") },
             modifier = Modifier.fillMaxWidth()
         )
+
+        if (showRegisterForm) {
+            OutlinedTextField(
+                value = state.email,
+                onValueChange = viewModel::onEmailChanged,
+                label = { Text("Email") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            )
+        }
 
         OutlinedTextField(
             value = state.password,
@@ -59,21 +77,33 @@ fun LoginScreen(
         }
 
         Button(
-            onClick = viewModel::login,
+            onClick = {
+                if (showRegisterForm) {
+                    showRegisterForm = false
+                } else {
+                    viewModel.login()
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 12.dp)
         ) {
-            Text("Login")
+            Text(if (showRegisterForm) "Volver al login" else "Login")
         }
 
         Button(
-            onClick = viewModel::register,
+            onClick = {
+                if (showRegisterForm) {
+                    viewModel.register()
+                } else {
+                    showRegisterForm = true
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp)
         ) {
-            Text("Registrarse")
+            Text(if (showRegisterForm) "Crear cuenta" else "Registrarse")
         }
     }
 }

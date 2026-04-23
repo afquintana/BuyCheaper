@@ -34,16 +34,20 @@ class LoginViewModel @Inject constructor(
         _state.value = _state.value.copy(email = value)
     }
 
+    fun onNickChanged(value: String) {
+        _state.value = _state.value.copy(nick = value)
+    }
+
     fun onPasswordChanged(value: String) {
         _state.value = _state.value.copy(password = value)
     }
 
     fun login() {
-        submit { loginUseCase(state.value.email, state.value.password) }
+        submit { loginUseCase(state.value.nick, state.value.password) }
     }
 
     fun register() {
-        submit { registerUseCase(state.value.email, state.value.password) }
+        submit { registerUseCase(state.value.nick, state.value.email, state.value.password) }
     }
 
     private fun submit(action: suspend () -> Unit) {
@@ -57,6 +61,7 @@ class LoginViewModel @Inject constructor(
 }
 
 data class LoginUiState(
+    val nick: String = "",
     val email: String = "",
     val password: String = "",
     val isLoading: Boolean = false,

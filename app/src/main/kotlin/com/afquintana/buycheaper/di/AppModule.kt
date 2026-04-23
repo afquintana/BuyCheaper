@@ -22,22 +22,27 @@ object AppModule {
 
     @Provides
     @Singleton
+    @JvmStatic
     fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
 
     @Provides
     @Singleton
+    @JvmStatic
     fun provideFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
 
     @Provides
     @Singleton
+    @JvmStatic
     fun provideAuthRepository(impl: FirebaseAuthRepository): AuthRepository = impl
 
     @Provides
     @Singleton
+    @JvmStatic
     fun provideShoppingRepository(impl: FirestoreShoppingRepository): ShoppingRepository = impl
 
     @Provides
     @Singleton
+    @JvmStatic
     fun provideRetrofit(): Retrofit = Retrofit.Builder()
         .baseUrl("https://example.com/api/")
         .client(OkHttpClient.Builder().build())
@@ -46,6 +51,7 @@ object AppModule {
 
     @Provides
     @Singleton
+    @JvmStatic
     fun provideSupermarketApi(retrofit: Retrofit): SupermarketApi =
         retrofit.create(SupermarketApi::class.java)
 }
