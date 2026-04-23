@@ -63,7 +63,9 @@ class ProductDetailViewModel @Inject constructor(
             )
             runCatching { updateProductUseCase(product) }
                 .onSuccess { _state.update { it.copy(saved = true) } }
-                .onFailure { _state.update { it.copy(error = it.message) } }
+                .onFailure { throwable ->
+                    _state.update { currentState -> currentState.copy(error = throwable.message) }
+                }
         }
     }
 }

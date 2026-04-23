@@ -61,7 +61,7 @@ fun ProductDetailScreen(
                     .menuAnchor()
                     .fillMaxWidth()
             )
-            androidx.compose.material3.ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 state.supermarkets.forEach { market ->
                     DropdownMenuItem(text = { Text(market.name) }, onClick = {
                         viewModel.onSupermarketChanged(market.id)

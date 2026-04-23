@@ -177,7 +177,7 @@ private fun ProductInput(
                 .menuAnchor()
                 .fillMaxWidth()
         )
-        androidx.compose.material3.ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             supermarketOptions.forEach { market ->
                 DropdownMenuItem(
                     text = { Text(market.name) },
