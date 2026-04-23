@@ -88,6 +88,9 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
     implementation("com.squareup.okhttp3:okhttp:5.2.1")
+    implementation("com.github.ihsanbal:LoggingInterceptor:4.0.0") {
+        exclude(group = "org.json", module = "json")
+    }
 
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0")
 }

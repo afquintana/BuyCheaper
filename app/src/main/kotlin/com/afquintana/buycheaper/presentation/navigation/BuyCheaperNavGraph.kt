@@ -7,11 +7,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.afquintana.buycheaper.presentation.detail.ProductDetailScreen
-import com.afquintana.buycheaper.presentation.list.ShoppingListScreen
+import com.afquintana.buycheaper.presentation.list.ShoppingListRoute
 import com.afquintana.buycheaper.presentation.login.LoginScreen
 
 @Composable
-fun BuyCheaperNavGraph() {
+fun BuyCheaperNavHost() {
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = NavRoutes.Login.route) {
@@ -23,7 +23,7 @@ fun BuyCheaperNavGraph() {
             })
         }
         composable(NavRoutes.List.route) {
-            ShoppingListScreen(onProductClick = { productId ->
+            ShoppingListRoute(onProductClick = { productId ->
                 navController.navigate(NavRoutes.ProductDetail.create(productId))
             })
         }

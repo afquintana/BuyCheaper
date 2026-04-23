@@ -3,7 +3,7 @@ package com.afquintana.buycheaper
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import com.afquintana.buycheaper.presentation.navigation.BuyCheaperNavGraph
+import com.afquintana.buycheaper.presentation.navigation.BuyCheaperNavHost
 import com.afquintana.buycheaper.presentation.theme.BuyCheaperTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             BuyCheaperTheme {
-                BuyCheaperNavGraph()
+                BuyCheaperNavHost()
             }
         }
     }

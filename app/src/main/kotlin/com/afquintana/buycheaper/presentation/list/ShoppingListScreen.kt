@@ -12,10 +12,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -27,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,15 +38,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.afquintana.buycheaper.domain.model.Product
 import com.afquintana.buycheaper.domain.model.Section
 import com.afquintana.buycheaper.domain.model.ShoppingItem
+import com.afquintana.buycheaper.domain.model.Supermarket
 
 @Composable
-fun ShoppingListScreen(
+fun ShoppingListRoute(
     onProductClick: (String) -> Unit,
     viewModel: ShoppingListViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val message by viewModel.message.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var activeForm by rememberSaveable { mutableStateOf<ListForm?>(null) }
 
     LaunchedEffect(message) {
         message?.let { snackbarHostState.showSnackbar(it) }
@@ -55,31 +59,83 @@ fun ShoppingListScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SectionInput(onAdd = viewModel::addSection)
-            SupermarketInput(onAdd = viewModel::addSupermarket)
-            ProductInput(supermarketOptions = state.supermarkets, onAdd = viewModel::addProduct)
+            if (activeForm == null) {
+                ListActions(
+                    onAddProduct = { activeForm = ListForm.Product },
+                    onAddSection = { activeForm = ListForm.Section },
+                    onAddSupermarket = { activeForm = ListForm.Supermarket }
+                )
 
-            Text(
-                text = "Total lista: ${"%.2f".format(state.grandTotal)} €",
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
+                Text(
+                    text = "Total lista: ${"%.2f".format(state.grandTotal)} EUR",
+                    fontWeight = FontWeight.Bold
+                )
 
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.items) { item ->
-                    when (item) {
-                        is ShoppingItem.SectionItem -> SectionCard(item.section, viewModel::deleteSection)
-                        is ShoppingItem.ProductItem -> ProductCard(
-                            product = item.product,
-                            colorHex = state.supermarkets.firstOrNull { it.id == item.product.supermarketId }?.colorHex,
-                            onClick = { onProductClick(item.product.id) },
-                            onDelete = viewModel::deleteProduct
-                        )
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.items) { item ->
+                        when (item) {
+                            is ShoppingItem.SectionItem -> SectionCard(item.section, viewModel::deleteSection)
+                            is ShoppingItem.ProductItem -> ProductCard(
+                                product = item.product,
+                                colorHex = state.supermarkets.firstOrNull { it.id == item.product.supermarketId }?.colorHex,
+                                onClick = { onProductClick(item.product.id) },
+                                onDelete = viewModel::deleteProduct
+                            )
+                        }
                     }
                 }
+            } else {
+                when (activeForm) {
+                    ListForm.Product -> ProductForm(
+                        supermarketOptions = state.supermarkets,
+                        onAdd = { name, supermarketId, price, quantity ->
+                            viewModel.addProduct(name, supermarketId, price, quantity)
+                            activeForm = null
+                        },
+                        onBack = { activeForm = null }
+                    )
+
+                    ListForm.Section -> SectionForm(
+                        onAdd = {
+                            viewModel.addSection(it)
+                            activeForm = null
+                        },
+                        onBack = { activeForm = null }
+                    )
+
+                    ListForm.Supermarket -> SupermarketForm(
+                        onAdd = { name, colorHex ->
+                            viewModel.addSupermarket(name, colorHex)
+                            activeForm = null
+                        },
+                        onBack = { activeForm = null }
+                    )
+
+                    null -> Unit
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun ListActions(
+    onAddProduct: () -> Unit,
+    onAddSection: () -> Unit,
+    onAddSupermarket: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = onAddProduct, modifier = Modifier.fillMaxWidth()) {
+            Text("Anadir producto")
+        }
+        Button(onClick = onAddSection, modifier = Modifier.fillMaxWidth()) {
+            Text("Anadir seccion")
+        }
+        Button(onClick = onAddSupermarket, modifier = Modifier.fillMaxWidth()) {
+            Text("Anadir supermercado")
         }
     }
 }
@@ -121,7 +177,7 @@ private fun ProductCard(
         ) {
             Column {
                 Text(product.name, fontWeight = FontWeight.Bold)
-                Text("Precio: ${product.price} · Cantidad: ${product.quantity}")
+                Text("Precio: ${product.price} | Cantidad: ${product.quantity}")
                 Text("Total: ${"%.2f".format(product.total)}")
             }
             Text("Borrar", modifier = Modifier.clickable { onDelete(product.id) })
@@ -130,83 +186,160 @@ private fun ProductCard(
 }
 
 @Composable
-private fun SectionInput(onAdd: (String) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+private fun SectionForm(
+    onAdd: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    var title by rememberSaveable { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Nueva seccion", fontWeight = FontWeight.Bold)
         OutlinedTextField(
             value = title,
             onValueChange = { title = it },
-            label = { Text("Nueva sección") },
-            modifier = Modifier.weight(1f)
+            label = { Text("Titulo") },
+            modifier = Modifier.fillMaxWidth()
         )
-        Button(onClick = { onAdd(title); title = "" }) { Text("Añadir") }
+        FormActions(
+            onSubmit = { onAdd(title) },
+            submitLabel = "Anadir",
+            onBack = onBack
+        )
     }
 }
 
 @Composable
-private fun SupermarketInput(onAdd: (name: String, colorHex: String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var color by remember { mutableStateOf("#3B82F6") }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Supermercado") }, modifier = Modifier.weight(1f))
-        OutlinedTextField(value = color, onValueChange = { color = it }, label = { Text("Color") }, modifier = Modifier.weight(1f))
-        Button(onClick = { onAdd(name, color); name = "" }) { Text("Crear") }
+private fun SupermarketForm(
+    onAdd: (String, String) -> Unit,
+    onBack: () -> Unit
+) {
+    var name by rememberSaveable { mutableStateOf("") }
+    var color by rememberSaveable { mutableStateOf("#3B82F6") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Nuevo supermercado", fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Nombre") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = color,
+            onValueChange = { color = it },
+            label = { Text("Color") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        FormActions(
+            onSubmit = { onAdd(name, color) },
+            submitLabel = "Anadir",
+            onBack = onBack
+        )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProductInput(
-    supermarketOptions: List<com.afquintana.buycheaper.domain.model.Supermarket>,
-    onAdd: (String, String, Double, Double) -> Unit
+private fun ProductForm(
+    supermarketOptions: List<Supermarket>,
+    onAdd: (String, String, Double, Double) -> Unit,
+    onBack: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var price by remember { mutableStateOf("") }
-    var quantity by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var price by rememberSaveable { mutableStateOf("") }
+    var quantity by rememberSaveable { mutableStateOf("") }
+    var supermarketId by rememberSaveable { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
-    var supermarketId by remember { mutableStateOf("") }
 
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Nuevo producto", fontWeight = FontWeight.Bold)
+
         OutlinedTextField(
-            value = supermarketOptions.firstOrNull { it.id == supermarketId }?.name.orEmpty(),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Supermercado") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth()
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Producto") },
+            modifier = Modifier.fillMaxWidth()
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            supermarketOptions.forEach { market ->
-                DropdownMenuItem(
-                    text = { Text(market.name) },
-                    onClick = {
-                        supermarketId = market.id
-                        expanded = false
-                    }
-                )
+
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+            OutlinedTextField(
+                value = supermarketOptions.firstOrNull { it.id == supermarketId }?.name.orEmpty(),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Supermercado") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth()
+            )
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                supermarketOptions.forEach { market ->
+                    DropdownMenuItem(
+                        text = { Text(market.name) },
+                        onClick = {
+                            supermarketId = market.id
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
-    }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Producto") }, modifier = Modifier.weight(1f))
-        OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f))
-        OutlinedTextField(value = quantity, onValueChange = { quantity = it }, label = { Text("Cantidad") }, modifier = Modifier.weight(1f))
+        OutlinedTextField(
+            value = price,
+            onValueChange = { price = it },
+            label = { Text("Precio") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+            value = quantity,
+            onValueChange = { quantity = it },
+            label = { Text("Cantidad") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        FormActions(
+            onSubmit = {
+                onAdd(
+                    name,
+                    supermarketId,
+                    price.toDoubleOrNull() ?: 0.0,
+                    quantity.toDoubleOrNull() ?: 0.0
+                )
+            },
+            submitLabel = "Anadir",
+            onBack = onBack
+        )
     }
-    Button(
-        onClick = {
-            onAdd(name, supermarketId, price.toDoubleOrNull() ?: 0.0, quantity.toDoubleOrNull() ?: 0.0)
-            name = ""
-            price = ""
-            quantity = ""
-        },
-        modifier = Modifier.padding(top = 8.dp)
-    ) { Text("Añadir producto") }
+}
+
+@Composable
+private fun FormActions(
+    onSubmit: () -> Unit,
+    submitLabel: String,
+    onBack: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Button(onClick = onSubmit, modifier = Modifier.weight(1f)) {
+            Text(submitLabel)
+        }
+        Button(onClick = onBack, modifier = Modifier.weight(1f)) {
+            Text("Volver")
+        }
+    }
 }
 
 private fun parseColor(colorHex: String?): Color {
     return runCatching { Color(android.graphics.Color.parseColor(colorHex ?: "#2D2D2D")) }
         .getOrDefault(Color(0xFF2D2D2D))
+}
+
+private enum class ListForm {
+    Product,
+    Section,
+    Supermarket
 }
