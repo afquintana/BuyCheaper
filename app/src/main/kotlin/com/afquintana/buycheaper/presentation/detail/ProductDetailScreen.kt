@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -35,7 +36,8 @@ fun ProductDetailScreen(
     LaunchedEffect(productId) { viewModel.load(productId) }
     LaunchedEffect(state.saved) { if (state.saved) onSaved() }
 
-    var expanded by remember { mutableStateOf(false) }
+    var supermarketExpanded by remember { mutableStateOf(false) }
+    var sectionExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -50,22 +52,55 @@ fun ProductDetailScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        ExposedDropdownMenuBox(
+            expanded = supermarketExpanded,
+            onExpandedChange = { supermarketExpanded = !supermarketExpanded }
+        ) {
             OutlinedTextField(
                 value = state.supermarkets.firstOrNull { it.id == state.supermarketId }?.name.orEmpty(),
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Supermercado") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supermarketExpanded) },
                 modifier = Modifier
                     .menuAnchor()
                     .fillMaxWidth()
             )
-            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(
+                expanded = supermarketExpanded,
+                onDismissRequest = { supermarketExpanded = false }
+            ) {
                 state.supermarkets.forEach { market ->
                     DropdownMenuItem(text = { Text(market.name) }, onClick = {
                         viewModel.onSupermarketChanged(market.id)
-                        expanded = false
+                        supermarketExpanded = false
+                    })
+                }
+            }
+        }
+
+        ExposedDropdownMenuBox(
+            expanded = sectionExpanded,
+            onExpandedChange = { sectionExpanded = !sectionExpanded }
+        ) {
+            OutlinedTextField(
+                value = state.sections.firstOrNull { it.id == state.sectionId }?.title.orEmpty(),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Seccion") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sectionExpanded) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth()
+            )
+            DropdownMenu(
+                expanded = sectionExpanded,
+                onDismissRequest = { sectionExpanded = false }
+            ) {
+                state.sections.forEach { section ->
+                    DropdownMenuItem(text = { Text(section.title) }, onClick = {
+                        viewModel.onSectionChanged(section.id)
+                        sectionExpanded = false
                     })
                 }
             }

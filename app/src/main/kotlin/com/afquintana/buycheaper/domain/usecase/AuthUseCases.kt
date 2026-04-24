@@ -4,7 +4,7 @@ import com.afquintana.buycheaper.domain.repository.AuthRepository
 import javax.inject.Inject
 
 class LoginUseCase @Inject constructor(private val repository: AuthRepository) {
-    suspend operator fun invoke(nick: String, password: String) = repository.login(nick, password)
+    suspend operator fun invoke(email: String, password: String) = repository.login(email, password)
 }
 
 class RegisterUseCase @Inject constructor(private val repository: AuthRepository) {

@@ -3,6 +3,7 @@ package com.afquintana.buycheaper.presentation.list
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -17,6 +20,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -37,84 +42,82 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.afquintana.buycheaper.domain.model.Product
 import com.afquintana.buycheaper.domain.model.Section
-import com.afquintana.buycheaper.domain.model.ShoppingItem
 import com.afquintana.buycheaper.domain.model.Supermarket
 
 @Composable
 fun ShoppingListRoute(
     onProductClick: (String) -> Unit,
+    onAddProduct: () -> Unit,
     viewModel: ShoppingListViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val message by viewModel.message.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var activeForm by rememberSaveable { mutableStateOf<ListForm?>(null) }
 
     LaunchedEffect(message) {
         message?.let { snackbarHostState.showSnackbar(it) }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(hostState = snackbarHostState) }) { paddingValues ->
-        Column(
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAddProduct) {
+                androidx.compose.material3.Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Anadir producto"
+                )
+            }
+        }
+    ) { paddingValues ->
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (activeForm == null) {
-                ListActions(
-                    onAddProduct = { activeForm = ListForm.Product },
-                    onAddSection = { activeForm = ListForm.Section },
-                    onAddSupermarket = { activeForm = ListForm.Supermarket }
-                )
-
+            item {
                 Text(
                     text = "Total lista: ${"%.2f".format(state.grandTotal)} EUR",
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
+            }
 
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.items) { item ->
-                        when (item) {
-                            is ShoppingItem.SectionItem -> SectionCard(item.section, viewModel::deleteSection)
-                            is ShoppingItem.ProductItem -> ProductCard(
-                                product = item.product,
-                                colorHex = state.supermarkets.firstOrNull { it.id == item.product.supermarketId }?.colorHex,
-                                onClick = { onProductClick(item.product.id) },
-                                onDelete = viewModel::deleteProduct
-                            )
-                        }
+            state.sections.forEach { section ->
+                val productsForSection = state.products.filter { it.sectionId == section.id }
+                if (productsForSection.isNotEmpty()) {
+                    item(key = section.id) {
+                        SectionHeader(section = section)
+                    }
+                    items(productsForSection, key = { it.id }) { product ->
+                        ProductCard(
+                            product = product,
+                            supermarketName = state.supermarkets.firstOrNull { it.id == product.supermarketId }?.name,
+                            colorHex = state.supermarkets.firstOrNull { it.id == product.supermarketId }?.colorHex,
+                            onClick = { onProductClick(product.id) },
+                            onDelete = viewModel::deleteProduct
+                        )
                     }
                 }
-            } else {
-                when (activeForm) {
-                    ListForm.Product -> ProductForm(
-                        supermarketOptions = state.supermarkets,
-                        onAdd = { name, supermarketId, price, quantity ->
-                            viewModel.addProduct(name, supermarketId, price, quantity)
-                            activeForm = null
-                        },
-                        onBack = { activeForm = null }
-                    )
+            }
 
-                    ListForm.Section -> SectionForm(
-                        onAdd = {
-                            viewModel.addSection(it)
-                            activeForm = null
-                        },
-                        onBack = { activeForm = null }
-                    )
+            val uncategorizedProducts = state.products.filter { product ->
+                state.sections.none { it.id == product.sectionId }
+            }
 
-                    ListForm.Supermarket -> SupermarketForm(
-                        onAdd = { name, colorHex ->
-                            viewModel.addSupermarket(name, colorHex)
-                            activeForm = null
-                        },
-                        onBack = { activeForm = null }
+            if (uncategorizedProducts.isNotEmpty()) {
+                item(key = "uncategorized") {
+                    SectionHeader(sectionTitle = "Sin seccion")
+                }
+                items(uncategorizedProducts, key = { it.id }) { product ->
+                    ProductCard(
+                        product = product,
+                        supermarketName = state.supermarkets.firstOrNull { it.id == product.supermarketId }?.name,
+                        colorHex = state.supermarkets.firstOrNull { it.id == product.supermarketId }?.colorHex,
+                        onClick = { onProductClick(product.id) },
+                        onDelete = viewModel::deleteProduct
                     )
-
-                    null -> Unit
                 }
             }
         }
@@ -122,42 +125,74 @@ fun ShoppingListRoute(
 }
 
 @Composable
-private fun ListActions(
-    onAddProduct: () -> Unit,
-    onAddSection: () -> Unit,
-    onAddSupermarket: () -> Unit
+fun AddSectionRoute(
+    onBack: () -> Unit,
+    viewModel: ShoppingListViewModel = hiltViewModel()
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onAddProduct, modifier = Modifier.fillMaxWidth()) {
-            Text("Anadir producto")
-        }
-        Button(onClick = onAddSection, modifier = Modifier.fillMaxWidth()) {
-            Text("Anadir seccion")
-        }
-        Button(onClick = onAddSupermarket, modifier = Modifier.fillMaxWidth()) {
-            Text("Anadir supermercado")
-        }
-    }
+    SectionForm(
+        onAdd = {
+            viewModel.addSection(it)
+            onBack()
+        },
+        onBack = onBack
+    )
 }
 
 @Composable
-private fun SectionCard(section: Section, onDelete: (String) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(section.title, fontWeight = FontWeight.Bold)
-            Text("Borrar", modifier = Modifier.clickable { onDelete(section.id) })
-        }
-    }
+fun AddSupermarketRoute(
+    onBack: () -> Unit,
+    viewModel: ShoppingListViewModel = hiltViewModel()
+) {
+    SupermarketForm(
+        onAdd = { name, colorHex ->
+            viewModel.addSupermarket(name, colorHex)
+            onBack()
+        },
+        onBack = onBack
+    )
+}
+
+@Composable
+fun AddProductRoute(
+    onBack: () -> Unit,
+    onAddSection: () -> Unit,
+    onAddSupermarket: () -> Unit,
+    viewModel: ShoppingListViewModel = hiltViewModel()
+) {
+    val state by viewModel.state.collectAsState()
+
+    ProductForm(
+        supermarketOptions = state.supermarkets,
+        sectionOptions = state.sections,
+        onAdd = { name, supermarketId, sectionId, price, quantity ->
+            viewModel.addProduct(name, supermarketId, sectionId, price, quantity)
+            onBack()
+        },
+        onAddSection = onAddSection,
+        onAddSupermarket = onAddSupermarket,
+        onBack = onBack
+    )
+}
+
+@Composable
+private fun SectionHeader(section: Section) {
+    SectionHeader(sectionTitle = section.title)
+}
+
+@Composable
+private fun SectionHeader(sectionTitle: String) {
+    Text(
+        text = sectionTitle,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 4.dp)
+    )
 }
 
 @Composable
 private fun ProductCard(
     product: Product,
+    supermarketName: String?,
     colorHex: String?,
     onClick: () -> Unit,
     onDelete: (String) -> Unit
@@ -175,12 +210,32 @@ private fun ProductCard(
                 .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(product.name, fontWeight = FontWeight.Bold)
+                supermarketName?.takeIf { it.isNotBlank() }?.let {
+                    Text("Supermercado: $it")
+                }
                 Text("Precio: ${product.price} | Cantidad: ${product.quantity}")
                 Text("Total: ${"%.2f".format(product.total)}")
             }
             Text("Borrar", modifier = Modifier.clickable { onDelete(product.id) })
+        }
+    }
+}
+
+@Composable
+private fun FormScreen(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            content()
         }
     }
 }
@@ -192,8 +247,7 @@ private fun SectionForm(
 ) {
     var title by rememberSaveable { mutableStateOf("") }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Nueva seccion", fontWeight = FontWeight.Bold)
+    FormScreen(title = "Nueva seccion") {
         OutlinedTextField(
             value = title,
             onValueChange = { title = it },
@@ -216,8 +270,7 @@ private fun SupermarketForm(
     var name by rememberSaveable { mutableStateOf("") }
     var color by rememberSaveable { mutableStateOf("#3B82F6") }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Nuevo supermercado", fontWeight = FontWeight.Bold)
+    FormScreen(title = "Nuevo supermercado") {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -242,18 +295,21 @@ private fun SupermarketForm(
 @Composable
 private fun ProductForm(
     supermarketOptions: List<Supermarket>,
-    onAdd: (String, String, Double, Double) -> Unit,
+    sectionOptions: List<Section>,
+    onAdd: (String, String, String, Double, Double) -> Unit,
+    onAddSection: () -> Unit,
+    onAddSupermarket: () -> Unit,
     onBack: () -> Unit
 ) {
     var name by rememberSaveable { mutableStateOf("") }
     var price by rememberSaveable { mutableStateOf("") }
     var quantity by rememberSaveable { mutableStateOf("") }
     var supermarketId by rememberSaveable { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(false) }
+    var sectionId by rememberSaveable { mutableStateOf("") }
+    var supermarketExpanded by remember { mutableStateOf(false) }
+    var sectionExpanded by remember { mutableStateOf(false) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Nuevo producto", fontWeight = FontWeight.Bold)
-
+    FormScreen(title = "Nuevo producto") {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -261,28 +317,72 @@ private fun ProductForm(
             modifier = Modifier.fillMaxWidth()
         )
 
-        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        ExposedDropdownMenuBox(
+            expanded = supermarketExpanded,
+            onExpandedChange = { supermarketExpanded = !supermarketExpanded }
+        ) {
             OutlinedTextField(
                 value = supermarketOptions.firstOrNull { it.id == supermarketId }?.name.orEmpty(),
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Supermercado") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supermarketExpanded) },
                 modifier = Modifier
                     .menuAnchor()
                     .fillMaxWidth()
             )
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(
+                expanded = supermarketExpanded,
+                onDismissRequest = { supermarketExpanded = false }
+            ) {
                 supermarketOptions.forEach { market ->
                     DropdownMenuItem(
                         text = { Text(market.name) },
                         onClick = {
                             supermarketId = market.id
-                            expanded = false
+                            supermarketExpanded = false
                         }
                     )
                 }
             }
+        }
+
+        Button(onClick = onAddSupermarket, modifier = Modifier.fillMaxWidth()) {
+            Text("Ir a anadir supermercado")
+        }
+
+        ExposedDropdownMenuBox(
+            expanded = sectionExpanded,
+            onExpandedChange = { sectionExpanded = !sectionExpanded }
+        ) {
+            OutlinedTextField(
+                value = sectionOptions.firstOrNull { it.id == sectionId }?.title.orEmpty(),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Seccion") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sectionExpanded) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth()
+            )
+            DropdownMenu(
+                expanded = sectionExpanded,
+                onDismissRequest = { sectionExpanded = false }
+            ) {
+                sectionOptions.forEach { section ->
+                    DropdownMenuItem(
+                        text = { Text(section.title) },
+                        onClick = {
+                            sectionId = section.id
+                            sectionExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Button(onClick = onAddSection, modifier = Modifier.fillMaxWidth()) {
+            Text("Ir a anadir seccion")
         }
 
         OutlinedTextField(
@@ -304,6 +404,7 @@ private fun ProductForm(
                 onAdd(
                     name,
                     supermarketId,
+                    sectionId,
                     price.toDoubleOrNull() ?: 0.0,
                     quantity.toDoubleOrNull() ?: 0.0
                 )
@@ -336,10 +437,4 @@ private fun FormActions(
 private fun parseColor(colorHex: String?): Color {
     return runCatching { Color(android.graphics.Color.parseColor(colorHex ?: "#2D2D2D")) }
         .getOrDefault(Color(0xFF2D2D2D))
-}
-
-private enum class ListForm {
-    Product,
-    Section,
-    Supermarket
 }

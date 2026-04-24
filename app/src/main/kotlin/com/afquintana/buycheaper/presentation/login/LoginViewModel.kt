@@ -43,7 +43,7 @@ class LoginViewModel @Inject constructor(
     }
 
     fun login() {
-        submit { loginUseCase(state.value.nick, state.value.password) }
+        submit { loginUseCase(state.value.email, state.value.password) }
     }
 
     fun register() {

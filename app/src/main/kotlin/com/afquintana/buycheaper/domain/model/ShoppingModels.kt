@@ -15,6 +15,7 @@ data class Product(
     val id: String,
     val name: String,
     val supermarketId: String,
+    val sectionId: String,
     val price: Double,
     val quantity: Double
 ) {

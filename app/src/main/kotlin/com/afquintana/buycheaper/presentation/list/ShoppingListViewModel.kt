@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.afquintana.buycheaper.domain.model.Product
 import com.afquintana.buycheaper.domain.model.Section
-import com.afquintana.buycheaper.domain.model.ShoppingItem
 import com.afquintana.buycheaper.domain.model.Supermarket
 import com.afquintana.buycheaper.domain.usecase.AddProductUseCase
 import com.afquintana.buycheaper.domain.usecase.AddSectionUseCase
@@ -49,7 +48,6 @@ class ShoppingListViewModel @Inject constructor(
             sections = sections,
             products = products,
             supermarkets = supermarkets,
-            items = sections.map { ShoppingItem.SectionItem(it) } + products.map { ShoppingItem.ProductItem(it) },
             grandTotal = products.sumOf { it.total }
         )
     }.stateIn(
@@ -74,11 +72,18 @@ class ShoppingListViewModel @Inject constructor(
             .onFailure { _message.value = it.message }
     }
 
-    fun addProduct(name: String, supermarketId: String, price: Double, quantity: Double) = viewModelScope.launch {
+    fun addProduct(
+        name: String,
+        supermarketId: String,
+        sectionId: String,
+        price: Double,
+        quantity: Double
+    ) = viewModelScope.launch {
         val product = Product(
             id = UUID.randomUUID().toString(),
             name = name,
             supermarketId = supermarketId,
+            sectionId = sectionId,
             price = price,
             quantity = quantity
         )
@@ -96,6 +101,5 @@ data class ShoppingListUiState(
     val sections: List<Section> = emptyList(),
     val products: List<Product> = emptyList(),
     val supermarkets: List<Supermarket> = emptyList(),
-    val items: List<ShoppingItem> = emptyList(),
     val grandTotal: Double = 0.0
 )

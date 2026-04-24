@@ -23,9 +23,10 @@ class FirebaseAuthRepository @Inject constructor(
         awaitClose { firebaseAuth.removeAuthStateListener(listener) }
     }
 
-    override suspend fun login(nick: String, password: String) {
-        val email = findEmailByNick(nick)
-        firebaseAuth.signInWithEmailAndPassword(email, password).await()
+    override suspend fun login(email: String, password: String) {
+        require(email.isNotBlank()) { "Introduce un email" }
+        require(password.isNotBlank()) { "Introduce una password" }
+        firebaseAuth.signInWithEmailAndPassword(email.trim(), password).await()
     }
 
     override suspend fun register(nick: String, email: String, password: String) {

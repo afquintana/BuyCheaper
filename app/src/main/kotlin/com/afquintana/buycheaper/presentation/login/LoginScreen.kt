@@ -41,23 +41,23 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        OutlinedTextField(
-            value = state.nick,
-            onValueChange = viewModel::onNickChanged,
-            label = { Text("Nick") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
         if (showRegisterForm) {
             OutlinedTextField(
-                value = state.email,
-                onValueChange = viewModel::onEmailChanged,
-                label = { Text("Email") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
+                value = state.nick,
+                onValueChange = viewModel::onNickChanged,
+                label = { Text("Nick") },
+                modifier = Modifier.fillMaxWidth()
             )
         }
+
+        OutlinedTextField(
+            value = state.email,
+            onValueChange = viewModel::onEmailChanged,
+            label = { Text("Email") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = if (showRegisterForm) 8.dp else 0.dp)
+        )
 
         OutlinedTextField(
             value = state.password,

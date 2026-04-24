@@ -40,6 +40,7 @@ class FirestoreShoppingRepository @Inject constructor(
                     id = doc.id,
                     name = doc.getString("name").orEmpty(),
                     supermarketId = doc.getString("supermarketId").orEmpty(),
+                    sectionId = doc.getString("sectionId").orEmpty(),
                     price = doc.getDouble("price") ?: 0.0,
                     quantity = doc.getDouble("quantity") ?: 0.0
                 )
@@ -91,6 +92,7 @@ class FirestoreShoppingRepository @Inject constructor(
             id = doc.id,
             name = doc.getString("name").orEmpty(),
             supermarketId = doc.getString("supermarketId").orEmpty(),
+            sectionId = doc.getString("sectionId").orEmpty(),
             price = doc.getDouble("price") ?: 0.0,
             quantity = doc.getDouble("quantity") ?: 0.0
         )
@@ -109,6 +111,7 @@ class FirestoreShoppingRepository @Inject constructor(
     private fun Product.toMap(): Map<String, Any> = mapOf(
         "name" to name,
         "supermarketId" to supermarketId,
+        "sectionId" to sectionId,
         "price" to price,
         "quantity" to quantity
     )
