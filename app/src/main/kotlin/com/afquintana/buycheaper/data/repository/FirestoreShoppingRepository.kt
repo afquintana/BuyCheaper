@@ -41,6 +41,7 @@ class FirestoreShoppingRepository @Inject constructor(
                     name = doc.getString("name").orEmpty(),
                     supermarketId = doc.getString("supermarketId").orEmpty(),
                     sectionId = doc.getString("sectionId").orEmpty(),
+                    checked = doc.getBoolean("checked") ?: false,
                     price = doc.getDouble("price") ?: 0.0,
                     quantity = doc.getDouble("quantity") ?: 0.0
                 )
@@ -93,6 +94,7 @@ class FirestoreShoppingRepository @Inject constructor(
             name = doc.getString("name").orEmpty(),
             supermarketId = doc.getString("supermarketId").orEmpty(),
             sectionId = doc.getString("sectionId").orEmpty(),
+            checked = doc.getBoolean("checked") ?: false,
             price = doc.getDouble("price") ?: 0.0,
             quantity = doc.getDouble("quantity") ?: 0.0
         )
@@ -108,10 +110,15 @@ class FirestoreShoppingRepository @Inject constructor(
         ).await()
     }
 
+    override suspend fun deleteSupermarket(supermarketId: String) {
+        supermarketsCollection.document(supermarketId).delete().await()
+    }
+
     private fun Product.toMap(): Map<String, Any> = mapOf(
         "name" to name,
         "supermarketId" to supermarketId,
         "sectionId" to sectionId,
+        "checked" to checked,
         "price" to price,
         "quantity" to quantity
     )

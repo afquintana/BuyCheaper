@@ -44,3 +44,7 @@ class GetProductByIdUseCase @Inject constructor(private val repository: Shopping
 class AddSupermarketUseCase @Inject constructor(private val repository: ShoppingRepository) {
     suspend operator fun invoke(supermarket: Supermarket) = repository.addSupermarket(supermarket)
 }
+
+class DeleteSupermarketUseCase @Inject constructor(private val repository: ShoppingRepository) {
+    suspend operator fun invoke(supermarketId: String) = repository.deleteSupermarket(supermarketId)
+}

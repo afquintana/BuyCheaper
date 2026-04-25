@@ -16,6 +16,7 @@ data class Product(
     val name: String,
     val supermarketId: String,
     val sectionId: String,
+    val checked: Boolean = false,
     val price: Double,
     val quantity: Double
 ) {

@@ -1,11 +1,14 @@
 package com.afquintana.buycheaper.presentation.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.afquintana.buycheaper.presentation.list.AddSupermarketColorRoute
 import com.afquintana.buycheaper.presentation.detail.ProductDetailScreen
 import com.afquintana.buycheaper.presentation.list.AddProductRoute
 import com.afquintana.buycheaper.presentation.list.AddSectionRoute
@@ -45,8 +48,39 @@ fun BuyCheaperNavHost() {
         composable(NavRoutes.AddSection.route) {
             AddSectionRoute(onBack = { navController.popBackStack() })
         }
-        composable(NavRoutes.AddSupermarket.route) {
-            AddSupermarketRoute(onBack = { navController.popBackStack() })
+        composable(NavRoutes.AddSupermarket.route) { backStackEntry ->
+            val selectedColorHex by backStackEntry.savedStateHandle
+                .getStateFlow("selected_supermarket_color", "#3B82F6")
+                .collectAsState()
+
+            AddSupermarketRoute(
+                selectedColorHex = selectedColorHex,
+                onBack = { navController.popBackStack() },
+                onPickColor = {
+                    navController.navigate(NavRoutes.AddSupermarketColor.create(selectedColorHex))
+                }
+            )
+        }
+        composable(
+            route = NavRoutes.AddSupermarketColor.route,
+            arguments = listOf(
+                navArgument("color") {
+                    type = NavType.StringType
+                    defaultValue = "#3B82F6"
+                    nullable = false
+                }
+            )
+        ) { backStackEntry ->
+            AddSupermarketColorRoute(
+                initialColorHex = backStackEntry.arguments?.getString("color").orEmpty(),
+                onBack = { navController.popBackStack() },
+                onColorSelected = { colorHex ->
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("selected_supermarket_color", colorHex)
+                    navController.popBackStack()
+                }
+            )
         }
         composable(
             route = NavRoutes.ProductDetail.route,

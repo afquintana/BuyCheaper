@@ -19,4 +19,5 @@ interface ShoppingRepository {
     suspend fun getProductById(id: String): Product?
 
     suspend fun addSupermarket(supermarket: Supermarket)
+    suspend fun deleteSupermarket(supermarketId: String)
 }

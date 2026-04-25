@@ -10,9 +10,11 @@ import com.afquintana.buycheaper.domain.usecase.AddSectionUseCase
 import com.afquintana.buycheaper.domain.usecase.AddSupermarketUseCase
 import com.afquintana.buycheaper.domain.usecase.DeleteProductUseCase
 import com.afquintana.buycheaper.domain.usecase.DeleteSectionUseCase
+import com.afquintana.buycheaper.domain.usecase.DeleteSupermarketUseCase
 import com.afquintana.buycheaper.domain.usecase.ObserveProductsUseCase
 import com.afquintana.buycheaper.domain.usecase.ObserveSectionsUseCase
 import com.afquintana.buycheaper.domain.usecase.ObserveSupermarketsUseCase
+import com.afquintana.buycheaper.domain.usecase.UpdateProductUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,8 +34,10 @@ class ShoppingListViewModel @Inject constructor(
     private val addSectionUseCase: AddSectionUseCase,
     private val deleteSectionUseCase: DeleteSectionUseCase,
     private val addProductUseCase: AddProductUseCase,
+    private val updateProductUseCase: UpdateProductUseCase,
     private val deleteProductUseCase: DeleteProductUseCase,
-    private val addSupermarketUseCase: AddSupermarketUseCase
+    private val addSupermarketUseCase: AddSupermarketUseCase,
+    private val deleteSupermarketUseCase: DeleteSupermarketUseCase
 ) : ViewModel() {
 
     private val _message = MutableStateFlow<String?>(null)
@@ -57,7 +61,7 @@ class ShoppingListViewModel @Inject constructor(
     )
 
     fun addSection(title: String) = viewModelScope.launch {
-        runCatching { addSectionUseCase(title) }
+        runCatching { addSectionUseCase(title.toTitleCaseWords()) }
             .onFailure { _message.value = it.message }
     }
 
@@ -67,8 +71,17 @@ class ShoppingListViewModel @Inject constructor(
     }
 
     fun addSupermarket(name: String, colorHex: String) = viewModelScope.launch {
-        val supermarket = Supermarket(id = UUID.randomUUID().toString(), name = name, colorHex = colorHex)
+        val supermarket = Supermarket(
+            id = UUID.randomUUID().toString(),
+            name = name.trim().uppercase(),
+            colorHex = colorHex
+        )
         runCatching { addSupermarketUseCase(supermarket) }
+            .onFailure { _message.value = it.message }
+    }
+
+    fun deleteSupermarket(id: String) = viewModelScope.launch {
+        runCatching { deleteSupermarketUseCase(id) }
             .onFailure { _message.value = it.message }
     }
 
@@ -81,13 +94,19 @@ class ShoppingListViewModel @Inject constructor(
     ) = viewModelScope.launch {
         val product = Product(
             id = UUID.randomUUID().toString(),
-            name = name,
+            name = name.toTitleCaseWords(),
             supermarketId = supermarketId,
             sectionId = sectionId,
+            checked = false,
             price = price,
             quantity = quantity
         )
         runCatching { addProductUseCase(product) }
+            .onFailure { _message.value = it.message }
+    }
+
+    fun toggleProductChecked(product: Product, checked: Boolean) = viewModelScope.launch {
+        runCatching { updateProductUseCase(product.copy(checked = checked)) }
             .onFailure { _message.value = it.message }
     }
 
@@ -96,6 +115,16 @@ class ShoppingListViewModel @Inject constructor(
             .onFailure { _message.value = it.message }
     }
 }
+
+private fun String.toTitleCaseWords(): String =
+    trim()
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { word ->
+            word.lowercase().replaceFirstChar { char ->
+                if (char.isLowerCase()) char.titlecase() else char.toString()
+            }
+        }
 
 data class ShoppingListUiState(
     val sections: List<Section> = emptyList(),
