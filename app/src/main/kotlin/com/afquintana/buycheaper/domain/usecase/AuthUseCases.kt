@@ -12,6 +12,10 @@ class RegisterUseCase @Inject constructor(private val repository: AuthRepository
         repository.register(nick, email, password)
 }
 
+class LogoutUseCase @Inject constructor(private val repository: AuthRepository) {
+    operator fun invoke() = repository.logout()
+}
+
 class ObserveAuthStateUseCase @Inject constructor(private val repository: AuthRepository) {
     operator fun invoke() = repository.isLoggedIn
 }

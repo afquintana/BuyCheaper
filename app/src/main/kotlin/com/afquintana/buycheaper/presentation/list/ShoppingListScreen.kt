@@ -2,6 +2,8 @@ package com.afquintana.buycheaper.presentation.list
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -37,12 +40,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -56,12 +61,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.afquintana.buycheaper.R
 import com.afquintana.buycheaper.domain.model.Product
+import com.afquintana.buycheaper.domain.model.CurrencyUnit
+import com.afquintana.buycheaper.domain.model.QuantityUnit
 import com.afquintana.buycheaper.domain.model.Section
 import com.afquintana.buycheaper.domain.model.Supermarket
+import com.afquintana.buycheaper.domain.model.pricePerQuantityDisplayText
+import com.afquintana.buycheaper.domain.model.priceDisplayText
+import com.afquintana.buycheaper.domain.model.quantityDisplayText
+import com.afquintana.buycheaper.domain.model.parseQuantityInput
+import com.afquintana.buycheaper.domain.model.formatDecimal
+import com.afquintana.buycheaper.presentation.theme.Blue
+import java.util.Locale
 
 @Composable
 fun ShoppingListRoute(
@@ -74,6 +90,9 @@ fun ShoppingListRoute(
     val snackbarHostState = remember { SnackbarHostState() }
     val sortedSections = state.sections.sortedBy { it.title.lowercase() }
     val sortedProducts = state.products.sortedBy { it.name.lowercase() }
+    val checkedProducts = state.products.filter { it.checkCount > 0 }
+    val checkedTotal = checkedProducts.sumOf { it.price * it.checkCount }
+    val checkedCurrencies = checkedProducts.map { it.currency }.distinct()
 
     LaunchedEffect(message) {
         message?.let { snackbarHostState.showSnackbar(it) }
@@ -82,20 +101,42 @@ fun ShoppingListRoute(
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddProduct) {
+            FloatingActionButton(
+                onClick = onAddProduct,
+                containerColor = Blue,
+                contentColor = Color.White
+            ) {
                 androidx.compose.material3.Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "Anadir producto"
+                    contentDescription = stringResource(R.string.content_description_add_product)
                 )
             }
         }
     ) { paddingValues ->
+        if (state.products.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 24.dp),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.empty_products),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            return@Scaffold
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             sortedSections.forEach { section ->
                 val productsForSection = sortedProducts.filter { it.sectionId == section.id }
@@ -108,8 +149,13 @@ fun ShoppingListRoute(
                             product = product,
                             colorHex = state.supermarkets.firstOrNull { it.id == product.supermarketId }?.colorHex,
                             onClick = { onProductClick(product.id) },
-                            onCheckedChange = { checked ->
-                                viewModel.toggleProductChecked(product, checked)
+                            onToggleChecked = {
+                                val nextCount = if (product.checkCount > 0) 0 else 1
+                                viewModel.setProductCheckCount(product, nextCount)
+                            },
+                            onIncreaseCheckCount = {
+                                val nextCount = if (product.checkCount <= 1) 2 else product.checkCount + 1
+                                viewModel.setProductCheckCount(product, nextCount)
                             }
                         )
                     }
@@ -122,18 +168,30 @@ fun ShoppingListRoute(
 
             if (uncategorizedProducts.isNotEmpty()) {
                 item(key = "uncategorized") {
-                    SectionHeader(sectionTitle = "Sin seccion")
+                    SectionHeader(sectionTitle = stringResource(R.string.section_uncategorized))
                 }
                 items(uncategorizedProducts, key = { it.id }) { product ->
                     ProductCard(
                         product = product,
                         colorHex = state.supermarkets.firstOrNull { it.id == product.supermarketId }?.colorHex,
                         onClick = { onProductClick(product.id) },
-                        onCheckedChange = { checked ->
-                            viewModel.toggleProductChecked(product, checked)
+                        onToggleChecked = {
+                            val nextCount = if (product.checkCount > 0) 0 else 1
+                            viewModel.setProductCheckCount(product, nextCount)
+                        },
+                        onIncreaseCheckCount = {
+                            val nextCount = if (product.checkCount <= 1) 2 else product.checkCount + 1
+                            viewModel.setProductCheckCount(product, nextCount)
                         }
                     )
                 }
+            }
+
+            item(key = "checked-total") {
+                CheckedTotalRow(
+                    total = checkedTotal,
+                    currencyLabel = checkedCurrencies.singleOrNull()?.displayLabel
+                )
             }
         }
     }
@@ -199,8 +257,9 @@ fun AddProductRoute(
     ProductForm(
         supermarketOptions = state.supermarkets.sortedBy { it.name.lowercase() },
         sectionOptions = state.sections.sortedBy { it.title.lowercase() },
-        onAdd = { name, supermarketId, sectionId, price, quantity ->
-            viewModel.addProduct(name, supermarketId, sectionId, price, quantity)
+        initialCurrency = state.preferredCurrency,
+        onAdd = { name, supermarketId, sectionId, price, quantity, quantityInput, quantityUnit, currency ->
+            viewModel.addProduct(name, supermarketId, sectionId, price, quantity, quantityInput, quantityUnit, currency)
             onBack()
         },
         onDeleteSection = viewModel::deleteSection,
@@ -219,21 +278,55 @@ private fun SectionHeader(section: Section) {
 @Composable
 private fun SectionHeader(sectionTitle: String) {
     Text(
-        text = sectionTitle,
+        text = sectionTitle.uppercase(Locale.getDefault()),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = 4.dp)
+        modifier = Modifier.padding(top = 2.dp)
     )
 }
 
 @Composable
+private fun CheckedTotalRow(
+    total: Double,
+    currencyLabel: String?
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.label_total),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = buildString {
+                append(formatDecimal(total, 2))
+                if (currencyLabel != null) {
+                    append(" ")
+                    append(currencyLabel)
+                }
+            },
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun ProductCard(
     product: Product,
     colorHex: String?,
     onClick: () -> Unit,
-    onCheckedChange: (Boolean) -> Unit
+    onToggleChecked: () -> Unit,
+    onIncreaseCheckCount: () -> Unit
 ) {
     val color = parseColor(colorHex)
+    val textColor = contentColorFor(color)
     val shape = RoundedCornerShape(18.dp)
     Card(
         shape = shape,
@@ -246,35 +339,65 @@ private fun ProductCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 12.dp, vertical = 2.8.dp)
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .align(androidx.compose.ui.Alignment.BottomEnd)
-                    .offset(x = 4.dp, y = (-2).dp)
-                    .size(26.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Color.Black)
-                    .clickable { onCheckedChange(!product.checked) }
+                    .offset(x = 4.dp, y = (-2).dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
-                if (product.checked) {
-                    Box(
-                        modifier = Modifier
-                            .align(androidx.compose.ui.Alignment.Center)
-                            .size(16.64.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(Color.White)
+                if (product.checkCount >= 2) {
+                    Text(
+                        text = stringResource(R.string.quantity_multiplier, product.checkCount),
+                        color = textColor,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
                     )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.Black)
+                        .combinedClickable(
+                            onClick = onToggleChecked,
+                            onLongClick = onIncreaseCheckCount
+                        )
+                ) {
+                    if (product.checkCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(androidx.compose.ui.Alignment.Center)
+                                .size(16.64.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color.White)
+                        )
+                    }
                 }
             }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 1.dp, end = 40.dp, bottom = 1.dp),
-                verticalArrangement = Arrangement.spacedBy(1.dp)
+                    .padding(top = 0.35.dp, end = 70.dp, bottom = 0.35.dp),
+                verticalArrangement = Arrangement.spacedBy(0.35.dp)
             ) {
-                Text(product.name, fontWeight = FontWeight.Bold)
-                Text("Precio: ${product.price} | Cantidad: ${product.quantity}")
+                Text(
+                    text = product.name,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${product.priceDisplayText()}  ${product.quantityDisplayText()}  ${product.pricePerQuantityDisplayText()}",
+                        color = textColor
+                    )
+                }
             }
         }
     }
@@ -310,16 +433,16 @@ private fun SectionForm(
 ) {
     var title by rememberSaveable { mutableStateOf("") }
 
-    FormScreen(title = "Nueva seccion") {
+    FormScreen(title = stringResource(R.string.title_new_section)) {
         OutlinedTextField(
             value = title,
             onValueChange = { title = it },
-            label = { Text("Titulo") },
+            label = { Text(stringResource(R.string.label_title)) },
             modifier = Modifier.fillMaxWidth()
         )
         FormActions(
             onSubmit = { onAdd(title) },
-            submitLabel = "Anadir",
+            submitLabel = stringResource(R.string.action_add),
             onBack = onBack
         )
     }
@@ -334,11 +457,11 @@ private fun SupermarketForm(
     onAdd: () -> Unit,
     onBack: () -> Unit
 ) {
-    FormScreen(title = "Nuevo supermercado") {
+    FormScreen(title = stringResource(R.string.title_new_supermarket)) {
         OutlinedTextField(
             value = name,
             onValueChange = onNameChange,
-            label = { Text("Nombre") },
+            label = { Text(stringResource(R.string.label_name)) },
             modifier = Modifier.fillMaxWidth()
         )
         ColorPickerField(
@@ -347,7 +470,7 @@ private fun SupermarketForm(
         )
         FormActions(
             onSubmit = onAdd,
-            submitLabel = "Anadir",
+            submitLabel = stringResource(R.string.action_add),
             onBack = onBack
         )
     }
@@ -358,7 +481,8 @@ private fun SupermarketForm(
 private fun ProductForm(
     supermarketOptions: List<Supermarket>,
     sectionOptions: List<Section>,
-    onAdd: (String, String, String, Double, Double) -> Unit,
+    initialCurrency: CurrencyUnit,
+    onAdd: (String, String, String, Double, Double, String, QuantityUnit, CurrencyUnit) -> Unit,
     onDeleteSection: (String) -> Unit,
     onDeleteSupermarket: (String) -> Unit,
     onAddSection: () -> Unit,
@@ -367,11 +491,17 @@ private fun ProductForm(
 ) {
     var name by rememberSaveable { mutableStateOf("") }
     var price by rememberSaveable { mutableStateOf("") }
+    var currency by rememberSaveable(initialCurrency.storageValue) {
+        mutableStateOf(initialCurrency.storageValue)
+    }
     var quantity by rememberSaveable { mutableStateOf("") }
+    var quantityUnit by rememberSaveable { mutableStateOf(QuantityUnit.UNIT.storageValue) }
     var supermarketId by rememberSaveable { mutableStateOf("") }
     var sectionId by rememberSaveable { mutableStateOf("") }
     var supermarketExpanded by remember { mutableStateOf(false) }
     var sectionExpanded by remember { mutableStateOf(false) }
+    var currencyExpanded by remember { mutableStateOf(false) }
+    var quantityUnitExpanded by remember { mutableStateOf(false) }
     var supermarketIdPendingDelete by remember { mutableStateOf<String?>(null) }
     var sectionIdPendingDelete by remember { mutableStateOf<String?>(null) }
 
@@ -397,11 +527,11 @@ private fun ProductForm(
         )
     }
 
-    FormScreen(title = "Nuevo producto") {
+    FormScreen(title = stringResource(R.string.title_new_product)) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
-            label = { Text("Producto") },
+            label = { Text(stringResource(R.string.label_product)) },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -413,10 +543,10 @@ private fun ProductForm(
                 value = supermarketOptions.firstOrNull { it.id == supermarketId }?.name.orEmpty(),
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Supermercado") },
+                label = { Text(stringResource(R.string.label_supermarket)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supermarketExpanded) },
                 modifier = Modifier
-                    .menuAnchor()
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
                     .fillMaxWidth()
             )
             DropdownMenu(
@@ -455,7 +585,7 @@ private fun ProductForm(
                             }) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Eliminar supermercado",
+                                    contentDescription = stringResource(R.string.content_description_delete_supermarket),
                                     tint = marketContentColor
                                 )
                             }
@@ -473,7 +603,7 @@ private fun ProductForm(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = "Añadir supermercado",
+                            text = stringResource(R.string.action_add_supermarket),
                             modifier = Modifier.fillMaxWidth()
                         )
                     },
@@ -491,13 +621,13 @@ private fun ProductForm(
             onExpandedChange = { sectionExpanded = !sectionExpanded }
         ) {
             OutlinedTextField(
-                value = sectionOptions.firstOrNull { it.id == sectionId }?.title.orEmpty(),
+                value = sectionOptions.firstOrNull { it.id == sectionId }?.title.orEmpty().uppercase(Locale.getDefault()),
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Seccion") },
+                label = { Text(stringResource(R.string.label_section)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sectionExpanded) },
                 modifier = Modifier
-                    .menuAnchor()
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
                     .fillMaxWidth()
             )
             DropdownMenu(
@@ -509,7 +639,7 @@ private fun ProductForm(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = section.title,
+                                text = section.title.uppercase(Locale.getDefault()),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         },
@@ -523,7 +653,7 @@ private fun ProductForm(
                             }) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Eliminar seccion"
+                                    contentDescription = stringResource(R.string.content_description_delete_section)
                                 )
                             }
                         },
@@ -537,7 +667,7 @@ private fun ProductForm(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = "Añadir sección",
+                            text = stringResource(R.string.action_add_section),
                             modifier = Modifier.fillMaxWidth()
                         )
                     },
@@ -550,27 +680,115 @@ private fun ProductForm(
             }
         }
 
-        OutlinedTextField(
-            value = price,
-            onValueChange = { price = it },
-            label = { Text("Precio") },
-            modifier = Modifier.fillMaxWidth()
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = price,
+                onValueChange = { price = sanitizePriceInput(it) },
+                label = { Text(stringResource(R.string.label_price)) },
+                modifier = Modifier.weight(1f)
+            )
 
-        OutlinedTextField(
-            value = quantity,
-            onValueChange = { quantity = it },
-            label = { Text("Cantidad") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            ExposedDropdownMenuBox(
+                expanded = currencyExpanded,
+                onExpandedChange = { currencyExpanded = !currencyExpanded },
+                modifier = Modifier.weight(0.7f)
+            ) {
+                OutlinedTextField(
+                    value = CurrencyUnit.fromStorage(currency).displayLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.label_currency)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = currencyExpanded) },
+                    modifier = Modifier
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
+                        .fillMaxWidth()
+                )
+                DropdownMenu(
+                    expanded = currencyExpanded,
+                    onDismissRequest = { currencyExpanded = false },
+                    modifier = Modifier.exposedDropdownSize()
+                ) {
+                    CurrencyUnit.entries.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(item.displayLabel) },
+                            onClick = {
+                                currency = item.storageValue
+                                currencyExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
 
-        OutlinedTextField(
-            value = pricePerQuantityText(price, quantity),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Precio/Cantidad") },
-            modifier = Modifier.fillMaxWidth()
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = quantity,
+                onValueChange = { quantity = sanitizeQuantityInput(it) },
+                label = { Text(stringResource(R.string.label_quantity)) },
+                modifier = Modifier.weight(1f)
+            )
+
+            ExposedDropdownMenuBox(
+                expanded = quantityUnitExpanded,
+                onExpandedChange = { quantityUnitExpanded = !quantityUnitExpanded },
+                modifier = Modifier.weight(0.7f)
+            ) {
+                OutlinedTextField(
+                    value = QuantityUnit.fromStorage(quantityUnit).displayLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.label_unit)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = quantityUnitExpanded) },
+                    modifier = Modifier
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
+                        .fillMaxWidth()
+                )
+                DropdownMenu(
+                    expanded = quantityUnitExpanded,
+                    onDismissRequest = { quantityUnitExpanded = false },
+                    modifier = Modifier.exposedDropdownSize()
+                ) {
+                    QuantityUnit.entries.forEach { unit ->
+                        DropdownMenuItem(
+                            text = { Text(unit.displayLabel) },
+                            onClick = {
+                                quantityUnit = unit.storageValue
+                                quantityUnitExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        DisableSelection {
+            OutlinedTextField(
+                value = pricePerQuantityText(
+                    price = price,
+                    quantity = quantity,
+                    quantityUnit = QuantityUnit.fromStorage(quantityUnit),
+                    currency = CurrencyUnit.fromStorage(currency)
+                ),
+                onValueChange = {},
+                readOnly = true,
+                enabled = false,
+                label = { Text(stringResource(R.string.label_price_per_quantity)) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                    disabledBorderColor = MaterialTheme.colorScheme.outline,
+                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    disabledContainerColor = Color.Transparent
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         FormActions(
             onSubmit = {
@@ -578,11 +796,14 @@ private fun ProductForm(
                     name,
                     supermarketId,
                     sectionId,
-                    price.toDoubleOrNull() ?: 0.0,
-                    quantity.toDoubleOrNull() ?: 0.0
+                    price.normalizedDecimal().toDoubleOrNull() ?: 0.0,
+                    parseQuantityInput(quantity) ?: 0.0,
+                    quantity,
+                    QuantityUnit.fromStorage(quantityUnit),
+                    CurrencyUnit.fromStorage(currency)
                 )
             },
-            submitLabel = "Anadir",
+            submitLabel = stringResource(R.string.action_add),
             onBack = onBack
         )
     }
@@ -598,11 +819,21 @@ private fun FormActions(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Button(onClick = onSubmit, modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = onSubmit,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(45.dp)
+        ) {
             Text(submitLabel)
         }
-        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-            Text("Volver")
+        Button(
+            onClick = onBack,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(45.dp)
+        ) {
+            Text(stringResource(R.string.action_back))
         }
     }
 }
@@ -614,16 +845,16 @@ private fun ConfirmDeleteDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Confirmar borrado") },
-        text = { Text("Estas seguro de querer borrarlo?") },
+        title = { Text(stringResource(R.string.dialog_delete_title)) },
+        text = { Text(stringResource(R.string.dialog_delete_message)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Borrar")
+                Text(stringResource(R.string.action_delete))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -644,7 +875,7 @@ private fun ColorPickerField(
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            text = "Color",
+            text = stringResource(R.string.label_color),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -689,8 +920,8 @@ private fun ColorPickerScreen(
 
     val selectedColorHex = rgbToHex(red, green, blue)
 
-    FormScreen(title = "Elegir color") {
-        Text("Previsualizacion")
+    FormScreen(title = stringResource(R.string.title_pick_color)) {
+        Text(stringResource(R.string.label_preview))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -701,25 +932,25 @@ private fun ColorPickerScreen(
             value = selectedColorHex,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Color seleccionado") },
+            label = { Text(stringResource(R.string.label_selected_color)) },
             modifier = Modifier.fillMaxWidth()
         )
         ColorSlider(
-            label = "Rojo",
+            label = stringResource(R.string.color_red),
             value = red,
             onValueChange = { red = it }
         )
         ColorSlider(
-            label = "Verde",
+            label = stringResource(R.string.color_green),
             value = green,
             onValueChange = { green = it }
         )
         ColorSlider(
-            label = "Azul",
+            label = stringResource(R.string.color_blue),
             value = blue,
             onValueChange = { blue = it }
         )
-        Text("Colores rapidos")
+        Text(stringResource(R.string.label_quick_colors))
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -740,7 +971,7 @@ private fun ColorPickerScreen(
         }
         FormActions(
             onSubmit = { onColorSelected(selectedColorHex) },
-            submitLabel = "Usar color",
+            submitLabel = stringResource(R.string.label_use_color),
             onBack = onBack
         )
     }
@@ -753,7 +984,7 @@ private fun ColorSlider(
     onValueChange: (Int) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("$label: $value")
+        Text(stringResource(R.string.slider_value, label, value))
         Slider(
             value = value.toFloat(),
             onValueChange = { onValueChange(it.toInt()) },
@@ -781,12 +1012,28 @@ private fun contentColorFor(background: Color): Color {
     return if (background.luminance() > 0.5f) Color.Black else Color.White
 }
 
-private fun pricePerQuantityText(price: String, quantity: String): String {
-    val priceValue = price.toDoubleOrNull()
-    val quantityValue = quantity.toDoubleOrNull()
-    if (priceValue == null || quantityValue == null || quantityValue == 0.0) return ""
-    return "%.3f".format(priceValue / quantityValue)
+private fun pricePerQuantityText(
+    price: String,
+    quantity: String,
+    quantityUnit: QuantityUnit,
+    currency: CurrencyUnit
+): String {
+    val priceValue = price.normalizedDecimal().toDoubleOrNull()
+    val quantityValue = parseQuantityInput(quantity)
+    if (priceValue == null || quantityValue == null) return ""
+    return pricePerQuantityDisplayText(priceValue, quantityValue, quantityUnit, currency)
 }
+
+private fun String.normalizedDecimal(): String = replace(',', '.')
+
+private fun sanitizePriceInput(value: String): String =
+    value.filter { it.isDigit() || it == ',' || it == '.' }
+
+private fun sanitizeQuantityInput(value: String): String =
+    value
+        .replace('X', 'x')
+        .replace('×', 'x')
+        .filter { it.isDigit() || it == 'x' || it == ',' || it == '.' }
 
 @Composable
 private fun ColorSwatch(

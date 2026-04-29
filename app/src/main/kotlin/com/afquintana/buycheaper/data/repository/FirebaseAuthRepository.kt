@@ -30,23 +30,18 @@ class FirebaseAuthRepository @Inject constructor(
     }
 
     override suspend fun register(nick: String, email: String, password: String) {
-        require(nick.isNotBlank()) { "Introduce un nick" }
         require(email.isNotBlank()) { "Introduce un email" }
         require(password.isNotBlank()) { "Introduce una password" }
-
-        val cleanNick = nick.trim()
-        val normalizedNick = cleanNick.lowercase()
-        val existingEmail = runCatching { findEmailByNick(cleanNick) }.getOrNull()
-        require(existingEmail == null) { "Ese nick ya esta registrado" }
 
         val result = firebaseAuth.createUserWithEmailAndPassword(email.trim(), password).await()
         val user = requireNotNull(result.user) { "No se pudo crear el usuario" }
 
-        user.updateProfile(userProfileChangeRequest { displayName = cleanNick }).await()
+        val displayName = email.trim().substringBefore("@").ifBlank { email.trim() }
+        user.updateProfile(userProfileChangeRequest { this.displayName = displayName }).await()
         firestore.collection(USERS_COLLECTION).document(user.uid).set(
             mapOf(
-                "nick" to cleanNick,
-                "normalizedNick" to normalizedNick,
+                "nick" to displayName,
+                "normalizedNick" to displayName.lowercase(),
                 "email" to email.trim()
             )
         ).await()
@@ -54,20 +49,6 @@ class FirebaseAuthRepository @Inject constructor(
 
     override fun logout() {
         firebaseAuth.signOut()
-    }
-
-    private suspend fun findEmailByNick(nick: String): String {
-        val normalizedNick = nick.trim().lowercase()
-        require(normalizedNick.isNotBlank()) { "Introduce un nick" }
-
-        val snapshot = firestore.collection(USERS_COLLECTION)
-            .whereEqualTo("normalizedNick", normalizedNick)
-            .limit(1)
-            .get()
-            .await()
-
-        return snapshot.documents.firstOrNull()?.getString("email")
-            ?: throw IllegalArgumentException("No existe ningun usuario con ese nick")
     }
 
     private companion object {

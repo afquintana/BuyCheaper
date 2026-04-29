@@ -2,9 +2,13 @@ package com.afquintana.buycheaper.presentation.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.afquintana.buycheaper.domain.model.CurrencyUnit
 import com.afquintana.buycheaper.domain.model.Product
+import com.afquintana.buycheaper.domain.model.QuantityUnit
 import com.afquintana.buycheaper.domain.model.Section
 import com.afquintana.buycheaper.domain.model.Supermarket
+import com.afquintana.buycheaper.domain.model.displayQuantityInput
+import com.afquintana.buycheaper.domain.model.parseQuantityInput
 import com.afquintana.buycheaper.domain.usecase.DeleteProductUseCase
 import com.afquintana.buycheaper.domain.usecase.DeleteSectionUseCase
 import com.afquintana.buycheaper.domain.usecase.DeleteSupermarketUseCase
@@ -55,9 +59,11 @@ class ProductDetailViewModel @Inject constructor(
                 name = product.name,
                 supermarketId = product.supermarketId,
                 sectionId = product.sectionId,
-                checked = product.checked,
-                price = product.price.toString(),
-                quantity = product.quantity.toString()
+                checkCount = product.checkCount,
+                price = "%.2f".format(product.price).replace('.', ','),
+                quantity = displayQuantityInput(product.quantityInput, product.quantity),
+                quantityUnit = product.quantityUnit,
+                currency = product.currency
             )
         }
     }
@@ -67,6 +73,8 @@ class ProductDetailViewModel @Inject constructor(
     fun onSectionChanged(value: String) = _state.update { it.copy(sectionId = value) }
     fun onPriceChanged(value: String) = _state.update { it.copy(price = value) }
     fun onQuantityChanged(value: String) = _state.update { it.copy(quantity = value) }
+    fun onQuantityUnitChanged(value: QuantityUnit) = _state.update { it.copy(quantityUnit = value) }
+    fun onCurrencyChanged(value: CurrencyUnit) = _state.update { it.copy(currency = value) }
 
     fun deleteSection(sectionId: String) {
         viewModelScope.launch {
@@ -108,9 +116,12 @@ class ProductDetailViewModel @Inject constructor(
                 name = current.name.toTitleCaseWords(),
                 supermarketId = current.supermarketId,
                 sectionId = current.sectionId,
-                checked = current.checked,
-                price = current.price.toDoubleOrNull() ?: 0.0,
-                quantity = current.quantity.toDoubleOrNull() ?: 0.0
+                checkCount = current.checkCount,
+                price = current.price.normalizedDecimal().toDoubleOrNull() ?: 0.0,
+                quantity = parseQuantityInput(current.quantity) ?: 0.0,
+                quantityInput = current.quantity,
+                quantityUnit = current.quantityUnit,
+                currency = current.currency
             )
             runCatching { updateProductUseCase(product) }
                 .onSuccess { _state.update { it.copy(saved = true) } }
@@ -138,9 +149,11 @@ data class ProductDetailUiState(
     val name: String = "",
     val supermarketId: String = "",
     val sectionId: String = "",
-    val checked: Boolean = false,
+    val checkCount: Int = 0,
     val price: String = "",
     val quantity: String = "",
+    val quantityUnit: QuantityUnit = QuantityUnit.UNIT,
+    val currency: CurrencyUnit = CurrencyUnit.EUR,
     val sections: List<Section> = emptyList(),
     val supermarkets: List<Supermarket> = emptyList(),
     val saved: Boolean = false,
@@ -156,3 +169,5 @@ private fun String.toTitleCaseWords(): String =
                 if (char.isLowerCase()) char.titlecase() else char.toString()
             }
         }
+
+private fun String.normalizedDecimal(): String = replace(',', '.')

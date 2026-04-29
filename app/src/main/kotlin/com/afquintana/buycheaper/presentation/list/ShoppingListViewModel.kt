@@ -1,8 +1,11 @@
 package com.afquintana.buycheaper.presentation.list
 
+import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.afquintana.buycheaper.domain.model.CurrencyUnit
 import com.afquintana.buycheaper.domain.model.Product
+import com.afquintana.buycheaper.domain.model.QuantityUnit
 import com.afquintana.buycheaper.domain.model.Section
 import com.afquintana.buycheaper.domain.model.Supermarket
 import com.afquintana.buycheaper.domain.usecase.AddProductUseCase
@@ -31,6 +34,7 @@ class ShoppingListViewModel @Inject constructor(
     observeSectionsUseCase: ObserveSectionsUseCase,
     observeProductsUseCase: ObserveProductsUseCase,
     observeSupermarketsUseCase: ObserveSupermarketsUseCase,
+    private val sharedPreferences: SharedPreferences,
     private val addSectionUseCase: AddSectionUseCase,
     private val deleteSectionUseCase: DeleteSectionUseCase,
     private val addProductUseCase: AddProductUseCase,
@@ -40,19 +44,22 @@ class ShoppingListViewModel @Inject constructor(
     private val deleteSupermarketUseCase: DeleteSupermarketUseCase
 ) : ViewModel() {
 
+    private val preferredCurrencyFlow = MutableStateFlow(loadPreferredCurrency())
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
     val state = combine(
         observeSectionsUseCase(),
         observeProductsUseCase(),
-        observeSupermarketsUseCase()
-    ) { sections, products, supermarkets ->
+        observeSupermarketsUseCase(),
+        preferredCurrencyFlow
+    ) { sections, products, supermarkets, preferredCurrency ->
         ShoppingListUiState(
             sections = sections,
             products = products,
             supermarkets = supermarkets,
-            grandTotal = products.sumOf { it.total }
+            grandTotal = products.sumOf { it.total },
+            preferredCurrency = preferredCurrency
         )
     }.stateIn(
         scope = viewModelScope,
@@ -61,7 +68,7 @@ class ShoppingListViewModel @Inject constructor(
     )
 
     fun addSection(title: String) = viewModelScope.launch {
-        runCatching { addSectionUseCase(title.toTitleCaseWords()) }
+        runCatching { addSectionUseCase(title.trim().uppercase()) }
             .onFailure { _message.value = it.message }
     }
 
@@ -90,29 +97,48 @@ class ShoppingListViewModel @Inject constructor(
         supermarketId: String,
         sectionId: String,
         price: Double,
-        quantity: Double
+        quantity: Double,
+        quantityInput: String,
+        quantityUnit: QuantityUnit,
+        currency: CurrencyUnit
     ) = viewModelScope.launch {
         val product = Product(
             id = UUID.randomUUID().toString(),
             name = name.toTitleCaseWords(),
             supermarketId = supermarketId,
             sectionId = sectionId,
-            checked = false,
+            checkCount = 0,
             price = price,
-            quantity = quantity
+            quantity = quantity,
+            quantityInput = quantityInput,
+            quantityUnit = quantityUnit,
+            currency = currency
         )
-        runCatching { addProductUseCase(product) }
+        runCatching {
+            addProductUseCase(product)
+            savePreferredCurrency(currency)
+        }
             .onFailure { _message.value = it.message }
     }
 
-    fun toggleProductChecked(product: Product, checked: Boolean) = viewModelScope.launch {
-        runCatching { updateProductUseCase(product.copy(checked = checked)) }
+    fun setProductCheckCount(product: Product, checkCount: Int) = viewModelScope.launch {
+        runCatching { updateProductUseCase(product.copy(checkCount = checkCount.coerceAtLeast(0))) }
             .onFailure { _message.value = it.message }
     }
 
     fun deleteProduct(id: String) = viewModelScope.launch {
         runCatching { deleteProductUseCase(id) }
             .onFailure { _message.value = it.message }
+    }
+
+    private fun loadPreferredCurrency(): CurrencyUnit =
+        CurrencyUnit.fromStorage(sharedPreferences.getString(PREFERRED_CURRENCY_KEY, CurrencyUnit.EUR.storageValue))
+
+    private fun savePreferredCurrency(currency: CurrencyUnit) {
+        sharedPreferences.edit()
+            .putString(PREFERRED_CURRENCY_KEY, currency.storageValue)
+            .apply()
+        preferredCurrencyFlow.value = currency
     }
 }
 
@@ -130,5 +156,8 @@ data class ShoppingListUiState(
     val sections: List<Section> = emptyList(),
     val products: List<Product> = emptyList(),
     val supermarkets: List<Supermarket> = emptyList(),
-    val grandTotal: Double = 0.0
+    val grandTotal: Double = 0.0,
+    val preferredCurrency: CurrencyUnit = CurrencyUnit.EUR
 )
+
+private const val PREFERRED_CURRENCY_KEY = "preferred_currency"

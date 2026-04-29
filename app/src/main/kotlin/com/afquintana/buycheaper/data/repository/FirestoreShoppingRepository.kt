@@ -1,6 +1,8 @@
 package com.afquintana.buycheaper.data.repository
 
 import com.afquintana.buycheaper.domain.model.Product
+import com.afquintana.buycheaper.domain.model.CurrencyUnit
+import com.afquintana.buycheaper.domain.model.QuantityUnit
 import com.afquintana.buycheaper.domain.model.Section
 import com.afquintana.buycheaper.domain.model.Supermarket
 import com.afquintana.buycheaper.domain.repository.ShoppingRepository
@@ -41,9 +43,13 @@ class FirestoreShoppingRepository @Inject constructor(
                     name = doc.getString("name").orEmpty(),
                     supermarketId = doc.getString("supermarketId").orEmpty(),
                     sectionId = doc.getString("sectionId").orEmpty(),
-                    checked = doc.getBoolean("checked") ?: false,
+                    checkCount = doc.getLong("checkCount")?.toInt()
+                        ?: if (doc.getBoolean("checked") == true) 1 else 0,
                     price = doc.getDouble("price") ?: 0.0,
-                    quantity = doc.getDouble("quantity") ?: 0.0
+                    quantity = doc.getDouble("quantity") ?: 0.0,
+                    quantityInput = doc.getString("quantityInput").orEmpty(),
+                    quantityUnit = QuantityUnit.fromStorage(doc.getString("quantityUnit")),
+                    currency = CurrencyUnit.fromStorage(doc.getString("currency"))
                 )
             }
             trySend(products)
@@ -66,7 +72,9 @@ class FirestoreShoppingRepository @Inject constructor(
     }
 
     override suspend fun addSection(title: String) {
-        sectionsCollection.document(UUID.randomUUID().toString()).set(mapOf("title" to title)).await()
+        sectionsCollection.document(UUID.randomUUID().toString()).set(
+            mapOf("title" to title.trim().uppercase())
+        ).await()
     }
 
     override suspend fun deleteSection(sectionId: String) {
@@ -94,9 +102,13 @@ class FirestoreShoppingRepository @Inject constructor(
             name = doc.getString("name").orEmpty(),
             supermarketId = doc.getString("supermarketId").orEmpty(),
             sectionId = doc.getString("sectionId").orEmpty(),
-            checked = doc.getBoolean("checked") ?: false,
+            checkCount = doc.getLong("checkCount")?.toInt()
+                ?: if (doc.getBoolean("checked") == true) 1 else 0,
             price = doc.getDouble("price") ?: 0.0,
-            quantity = doc.getDouble("quantity") ?: 0.0
+            quantity = doc.getDouble("quantity") ?: 0.0,
+            quantityInput = doc.getString("quantityInput").orEmpty(),
+            quantityUnit = QuantityUnit.fromStorage(doc.getString("quantityUnit")),
+            currency = CurrencyUnit.fromStorage(doc.getString("currency"))
         )
     }
 
@@ -115,11 +127,25 @@ class FirestoreShoppingRepository @Inject constructor(
     }
 
     private fun Product.toMap(): Map<String, Any> = mapOf(
-        "name" to name,
+        "name" to name.toTitleCaseWords(),
         "supermarketId" to supermarketId,
         "sectionId" to sectionId,
-        "checked" to checked,
+        "checkCount" to checkCount,
+        "checked" to (checkCount > 0),
         "price" to price,
-        "quantity" to quantity
+        "quantity" to quantity,
+        "quantityInput" to quantityInput,
+        "quantityUnit" to quantityUnit.storageValue,
+        "currency" to currency.storageValue
     )
+
+    private fun String.toTitleCaseWords(): String =
+        trim()
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { word ->
+                word.lowercase().replaceFirstChar { char ->
+                    if (char.isLowerCase()) char.titlecase() else char.toString()
+                }
+            }
 }
